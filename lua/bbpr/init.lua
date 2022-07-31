@@ -4,8 +4,8 @@ local bb = require('bbpr.bitbucket')
 local api = vim.api
 local pr_list, pr = nil
 
-local choose_buf, desc_buf, file_list_buf, diff_buf, diff_buf_2 = nil
-local pr_choose_win, pr_desc_win, pr_diff_win = nil
+local desc_buf, file_list_buf, diff_buf, diff_buf_2 = nil
+local pr_desc_win, pr_diff_win = nil
 
 -- Taken from https://gist.github.com/GabrielBdeC/b055af60707115cbc954b0751d87ec23
 function string:split(delimiter)
@@ -64,37 +64,6 @@ local function set_buf_options(buf, mappings)
     end
 end
 
-local function open_pr_choose_window()
-    -- create a new scratch buffer
-    choose_buf = api.nvim_create_buf(false, true)
-    set_buf_options(choose_buf, {
-        q = 'close()',
-        ['<cr>'] = 'open_pr()'
-    })
-
-    local width = api.nvim_get_option("columns")
-    local height = api.nvim_get_option("lines")
-
-    local win_height = math.ceil(height * 0.9)
-    local win_width = math.ceil(width * 0.8)
-
-    local row = math.ceil((height - win_height) / 2 - 1)
-    local col = math.ceil((width - win_width) / 2)
-
-    local opts = {
-        style = "minimal",
-        border = "single",
-        relative = "editor",
-        width = win_width,
-        height = win_height,
-        row = row,
-        col = col
-    }
-
-    pr_choose_win = api.nvim_open_win(choose_buf, true, opts)
-    api.nvim_win_set_option(pr_choose_win, 'cursorline', true)
-end
-
 local function create_split_win(opts)
     if vertical then
         api.nvim_command(opts)
@@ -112,12 +81,7 @@ local function create_split_win(opts)
 end
 
 local function close()
-    if choose_buf and api.nvim_buf_is_valid(choose_buf) then
-        local win = vim.fn.bufwinnr(choose_buf)
-        if win ~= -1 then
-            vim.cmd("exec "..win..".." .. "'wincmd q'")
-        end
-    elseif diff_buf and api.nvim_buf_is_valid(diff_buf) then
+    if diff_buf and api.nvim_buf_is_valid(diff_buf) then
         api.nvim_command("tabclose")
     end
 end
@@ -140,31 +104,13 @@ local function paint_desc()
     api.nvim_buf_set_option(desc_buf, 'modifiable', false)
 end
 
-local function paint_choose_buf()
-    if pr_list == nil then
-        return
-    end
-
-    api.nvim_buf_set_option(choose_buf, 'modifiable', true)
-
-    local list = {}
-    for k,v in pairs(pr_list) do
-        table.insert(list, #list + 1, k..' <=> '..v['title'])
-    end
-
-    api.nvim_buf_set_lines(choose_buf, 0, -1, false, list)
-
-    api.nvim_buf_set_option(choose_buf, 'modifiable', false)
-end
-
-local function open_pr()
+local function open_pr(line)
     -- split by spaces and grab the first element
-    local pr_index = api.nvim_get_current_line():gmatch("%S+")()
+    local pr_index = line:split(':')[1]
     pr = pr_list[pr_index]
 
     close()
     pr_choose_win = nil
-    choose_buf = nil
 
     api.nvim_command("tabnew")
 
@@ -247,21 +193,15 @@ local function load_diff(source_commit, dest_commit)
 end
 
 local function bbpr()
-    if choose_buf and api.nvim_buf_is_valid(choose_buf) then
-        local win = vim.fn.bufwinnr(choose_buf)
-        if win ~= -1 then
-            vim.cmd("exec "..win..".." .. "'wincmd w'")
-        else
-            close()
-            return
-        end
-    else
-        open_pr_choose_window()
-    end
-
     local workspace, repo = bb.get_local_workspace_and_repo()
     pr_list = bb.get_pull_requests(workspace, repo)
-    paint_choose_buf()
+
+    local pr_string = ''
+    for k,v in pairs(pr_list) do
+        pr_string = pr_string..k..': '..v['title']..'\n'
+    end
+
+    vim.fn['fzf#vim#grep']('echo "'..pr_string:sub(1,-2)..'"', 1, { ['options'] = { '--ansi' }, ['sink'] = open_pr }, 0)
 end
 
 return {
