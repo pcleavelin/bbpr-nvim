@@ -3,7 +3,7 @@
 local api = vim.api
 local pr_list, pr = nil
 
-local choose_buf, desc_buf, file_list_buf = nil
+local choose_buf, desc_buf, file_list_buf, diff_buf = nil
 local pr_choose_win, pr_desc_win, pr_diff_win = nil
 
 -- Taken from https://gist.github.com/GabrielBdeC/b055af60707115cbc954b0751d87ec23
@@ -97,13 +97,10 @@ end
 
 local function create_split_win(vertical)
     if vertical then
-        vim.cmd("vs")
+        api.nvim_command("botright vnew")
     else
-        vim.cmd("split")
+        vim.cmd("new")
     end
-
-    -- make sure to move to the new window
-    vim.cmd("wincmd l")
 
     local win = api.nvim_get_current_win()
     local buf = api.nvim_create_buf(false, true)
@@ -115,6 +112,10 @@ local function create_split_win(vertical)
 end
 
 local function close(win)
+    if pr_choose_window and api.nvim_win_is_valid(pr_choose_window) then
+        api.nvim_win_close(pr_choose_window, true)
+    end
+
     if win and api.nvim_win_is_valid(win) then
         api.nvim_win_close(win, true)
     end
@@ -158,18 +159,21 @@ local function open_pr()
     get_pr(pr["link"])
 
     close(pr_choose_win)
+    pr_choose_win = nil
     choose_buf = nil
 
     api.nvim_command("tabnew")
 
     -- setup window showing the file diff
     pr_diff_win = api.nvim_get_current_win()
-    diff_buf = api.nvim_get_current_buf()
+    diff_buf = api.nvim_create_buf(false, true)
     set_buf_options(diff_buf)
+    api.nvim_win_set_buf(pr_diff_win, diff_buf)
 
     -- setup file chooser
     pr_file_list_win, file_list_buf = create_split_win(true)
-    api.nvim_win_set_option(pr_file_list_win, 'cursorline', true)
+    --api.nvim_win_set_option(pr_file_list_win, 'cursorline', true)
+
     set_mappings(file_list_buf, {
         ['<cr>'] = 'load_diff()'
     })
@@ -181,13 +185,26 @@ local function open_pr()
     paint_desc()
 
     api.nvim_set_current_win(pr_file_list_win)
+
+    print("diff: "..api.nvim_win_get_number(pr_diff_win)..", list: "..api.nvim_win_get_number(pr_file_list_win)..", desc: "..api.nvim_win_get_number(pr_desc_win))
 end
 
 local function load_diff()
     local file = api.nvim_get_current_line()
     api.nvim_set_current_win(pr_diff_win)
 
+    api.nvim_buf_set_option(diff_buf, 'modifiable', true)
+    api.nvim_buf_set_lines(diff_buf, 0, -1, false, {})
 
+    -- TODO: use commit from PR instead of `HEAD~1`
+    vim.cmd('silent exec ":r !git show HEAD~1:./'..file..'"');
+    vim.cmd('diffthis')
+
+    api.nvim_command("vnew")
+    vim.cmd('silent exec ":r !git show master:./'..file..'"');
+    vim.cmd('diffthis')
+
+    api.nvim_buf_set_option(diff_buf, 'modifiable', false)
 end
 
 local function bbpr()
