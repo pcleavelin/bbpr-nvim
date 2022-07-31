@@ -72,7 +72,6 @@ local function open_pr_choose_window()
         ['<cr>'] = 'open_pr()'
     })
 
-
     local width = api.nvim_get_option("columns")
     local height = api.nvim_get_option("lines")
 
@@ -112,13 +111,14 @@ local function create_split_win(opts)
     return win, buf
 end
 
-local function close(win)
-    if pr_choose_window and api.nvim_win_is_valid(pr_choose_window) then
-        api.nvim_win_close(pr_choose_window, true)
-    end
-
-    if win and api.nvim_win_is_valid(win) then
-        api.nvim_win_close(win, true)
+local function close()
+    if choose_buf and api.nvim_buf_is_valid(choose_buf) then
+        local win = vim.fn.bufwinnr(choose_buf)
+        if win ~= -1 then
+            vim.cmd("exec "..win..".." .. "'wincmd q'")
+        end
+    elseif diff_buf and api.nvim_buf_is_valid(diff_buf) then
+        api.nvim_command("tabclose")
     end
 end
 
@@ -162,7 +162,7 @@ local function open_pr()
     local pr_index = api.nvim_get_current_line():gmatch("%S+")()
     pr = pr_list[pr_index]
 
-    close(pr_choose_win)
+    close()
     pr_choose_win = nil
     choose_buf = nil
 
@@ -179,6 +179,7 @@ local function open_pr()
     api.nvim_win_set_option(pr_file_list_win, 'cursorline', true)
 
     set_mappings(file_list_buf, {
+        q = 'close()',
         ['<cr>'] = 'load_diff("'..pr['source_commit']..'", "'..pr['dest_commit']..'")'
     })
     paint_file_list_buf(pr['source_commit'], pr['dest_commit'])
@@ -246,8 +247,14 @@ local function load_diff(source_commit, dest_commit)
 end
 
 local function bbpr()
-    if win and api.nvim_win_is_valid(pr_choose_win) then
-        api.nvim_set_current_win(pr_choose_win)
+    if choose_buf and api.nvim_buf_is_valid(choose_buf) then
+        local win = vim.fn.bufwinnr(choose_buf)
+        if win ~= -1 then
+            vim.cmd("exec "..win..".." .. "'wincmd w'")
+        else
+            close()
+            return
+        end
     else
         open_pr_choose_window()
     end
