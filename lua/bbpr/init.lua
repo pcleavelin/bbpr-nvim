@@ -3,7 +3,7 @@
 local api = vim.api
 local pr_list, pr = nil
 
-local choose_buf, desc_buf, file_list_buf, diff_buf = nil
+local choose_buf, desc_buf, file_list_buf, diff_buf, diff_buf_2 = nil
 local pr_choose_win, pr_desc_win, pr_diff_win = nil
 
 -- Taken from https://gist.github.com/GabrielBdeC/b055af60707115cbc954b0751d87ec23
@@ -95,18 +95,18 @@ local function open_pr_choose_window()
     api.nvim_win_set_option(pr_choose_win, 'cursorline', true)
 end
 
-local function create_split_win(vertical)
+local function create_split_win(opts)
     if vertical then
-        api.nvim_command("botright vnew")
+        api.nvim_command(opts)
     else
-        vim.cmd("new")
+        vim.cmd(opts)
     end
 
     local win = api.nvim_get_current_win()
-    local buf = api.nvim_create_buf(false, true)
+    local buf = api.nvim_get_current_buf()
 
     set_buf_options(buf)
-    api.nvim_win_set_buf(win, buf)
+    -- api.nvim_win_set_buf(win, buf)
 
     return win, buf
 end
@@ -166,13 +166,13 @@ local function open_pr()
 
     -- setup window showing the file diff
     pr_diff_win = api.nvim_get_current_win()
-    diff_buf = api.nvim_create_buf(false, true)
+    diff_buf = api.nvim_get_current_buf()
     set_buf_options(diff_buf)
     api.nvim_win_set_buf(pr_diff_win, diff_buf)
 
     -- setup file chooser
-    pr_file_list_win, file_list_buf = create_split_win(true)
-    --api.nvim_win_set_option(pr_file_list_win, 'cursorline', true)
+    pr_file_list_win, file_list_buf = create_split_win("botright vnew")
+    api.nvim_win_set_option(pr_file_list_win, 'cursorline', true)
 
     set_mappings(file_list_buf, {
         ['<cr>'] = 'load_diff()'
@@ -180,54 +180,66 @@ local function open_pr()
     paint_file_list_buf()
 
     -- setup window showing PR description
-    pr_desc_win, desc_buf = create_split_win(false)
+    pr_desc_win, desc_buf = create_split_win("new")
     set_buf_options(desc_buf)
     paint_desc()
 
     api.nvim_set_current_win(pr_file_list_win)
-
-    print("diff: "..api.nvim_win_get_number(pr_diff_win)..", list: "..api.nvim_win_get_number(pr_file_list_win)..", desc: "..api.nvim_win_get_number(pr_desc_win))
 end
 
-local function load_diff()
-    local file = api.nvim_get_current_line()
+local function create_win_from_buf(_buf, winopts)
     local win = -1
+    local buf = _buf
 
-    -- TODO: change these two `if`s into a function to grab windows
-    -- check if the diff buffer is still alive
-    if diff_buf and api.nvim_buf_is_valid(diff_buf) then
-        win = vim.fn.bufwinnr(diff_buf)
+    -- check if the buffer is still alive
+    if buf and api.nvim_buf_is_valid(buf) then
+        win = vim.fn.bufwinnr(buf)
     else
         -- if not re-create
-        diff_buf = api.nvim_create_buf(false, true)
-        set_buf_options(diff_buf)
+        buf = api.nvim_create_buf(false, true)
+        set_buf_options(buf)
     end
 
     -- check if the diff window still alive
     if win == -1 then
         -- create new window to the left and attach buffer
-        vim.cmd("topleft vnew")
+        vim.cmd(winopts)
         win = api.nvim_get_current_win()
         api.nvim_set_current_win(win)
 
-        api.nvim_win_set_buf(win, diff_buf)
+        api.nvim_win_set_buf(win, buf)
     else
         -- if it still exists and the buffer is attached, switch to that window
         vim.cmd("exec "..win..".." .. "'wincmd w'")
     end 
+    
+    return win, buf
+end
 
+local function load_diff()
+    local file = api.nvim_get_current_line()
+    local win, win_2
+
+    win, diff_buf = create_win_from_buf(diff_buf, "topleft vnew")
     api.nvim_buf_set_option(diff_buf, 'modifiable', true)
     api.nvim_buf_set_lines(diff_buf, 0, -1, false, {})
 
-    -- TODO: use commit from PR instead of `HEAD~1`
+    -- TODO: use commit from PR instead of `HEAD`
+    api.nvim_buf_set_name(diff_buf, "HEAD~1 - "..file);
     vim.cmd('silent exec ":r !git show HEAD~1:./'..file..'"');
     vim.cmd('diffthis')
 
-    api.nvim_command("vnew")
+    api.nvim_buf_set_option(diff_buf, 'modifiable', false)
+
+    win_2, diff_buf_2 = create_win_from_buf(diff_buf_2, "new")
+    api.nvim_buf_set_option(diff_buf_2, 'modifiable', true)
+    api.nvim_buf_set_lines(diff_buf_2, 0, -1, false, {})
+
+    api.nvim_buf_set_name(diff_buf_2, "master - "..file)
     vim.cmd('silent exec ":r !git show master:./'..file..'"');
     vim.cmd('diffthis')
 
-    api.nvim_buf_set_option(diff_buf, 'modifiable', false)
+    api.nvim_buf_set_option(diff_buf_2, 'modifiable', false)
 end
 
 local function bbpr()
