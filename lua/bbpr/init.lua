@@ -1,4 +1,5 @@
 -- A simple interface for viewing pull requests in a BitBucket repository
+local bb = require('bbpr.bitbucket')
 
 local api = vim.api
 local pr_list, pr = nil
@@ -121,10 +122,10 @@ local function close(win)
     end
 end
 
-local function paint_file_list_buf()
+local function paint_file_list_buf(source_commit, dest_commit)
     api.nvim_buf_set_option(file_list_buf, 'modifiable', true)
 
-    local result = vim.cmd('silent exec ":r !git diff HEAD~1 --name-only"');
+    local result = vim.cmd('silent exec ":r !git diff '..dest_commit..'..'..source_commit..' --name-only"');
 
     api.nvim_buf_set_option(file_list_buf, 'modifiable', false)
 end
@@ -140,11 +141,15 @@ local function paint_desc()
 end
 
 local function paint_choose_buf()
+    if pr_list == nil then
+        return
+    end
+
     api.nvim_buf_set_option(choose_buf, 'modifiable', true)
 
     local list = {}
     for k,v in pairs(pr_list) do
-        table.insert(list, #list + 1, k..' <=> '..v["link"])
+        table.insert(list, #list + 1, k..' <=> '..v['title'])
     end
 
     api.nvim_buf_set_lines(choose_buf, 0, -1, false, list)
@@ -155,8 +160,7 @@ end
 local function open_pr()
     -- split by spaces and grab the first element
     local pr_index = api.nvim_get_current_line():gmatch("%S+")()
-    local pr = pr_list[pr_index]
-    get_pr(pr["link"])
+    pr = pr_list[pr_index]
 
     close(pr_choose_win)
     pr_choose_win = nil
@@ -175,9 +179,9 @@ local function open_pr()
     api.nvim_win_set_option(pr_file_list_win, 'cursorline', true)
 
     set_mappings(file_list_buf, {
-        ['<cr>'] = 'load_diff()'
+        ['<cr>'] = 'load_diff("'..pr['source_commit']..'", "'..pr['dest_commit']..'")'
     })
-    paint_file_list_buf()
+    paint_file_list_buf(pr['source_commit'], pr['dest_commit'])
 
     -- setup window showing PR description
     pr_desc_win, desc_buf = create_split_win("new")
@@ -216,27 +220,26 @@ local function create_win_from_buf(_buf, winopts)
     return win, buf
 end
 
-local function load_diff()
+local function load_diff(source_commit, dest_commit)
     local file = api.nvim_get_current_line()
     local win, win_2
 
-    win, diff_buf = create_win_from_buf(diff_buf, "topleft vnew")
+    win_2, diff_buf = create_win_from_buf(diff_buf, 'topleft vnew')
     api.nvim_buf_set_option(diff_buf, 'modifiable', true)
     api.nvim_buf_set_lines(diff_buf, 0, -1, false, {})
 
-    -- TODO: use commit from PR instead of `HEAD`
-    api.nvim_buf_set_name(diff_buf, "HEAD~1 - "..file);
-    vim.cmd('silent exec ":r !git show HEAD~1:./'..file..'"');
+    api.nvim_buf_set_name(diff_buf, 'Merging into: '..dest_commit..' - '..file)
+    vim.cmd('silent exec ":r !git show '..dest_commit..':./'..file..'"');
     vim.cmd('diffthis')
 
     api.nvim_buf_set_option(diff_buf, 'modifiable', false)
 
-    win_2, diff_buf_2 = create_win_from_buf(diff_buf_2, "new")
+    win, diff_buf_2 = create_win_from_buf(diff_buf_2, 'new')
     api.nvim_buf_set_option(diff_buf_2, 'modifiable', true)
     api.nvim_buf_set_lines(diff_buf_2, 0, -1, false, {})
 
-    api.nvim_buf_set_name(diff_buf_2, "master - "..file)
-    vim.cmd('silent exec ":r !git show master:./'..file..'"');
+    api.nvim_buf_set_name(diff_buf_2, 'Taking from: '..source_commit..' - '..file);
+    vim.cmd('silent exec ":r !git show '..source_commit..':./'..file..'"');
     vim.cmd('diffthis')
 
     api.nvim_buf_set_option(diff_buf_2, 'modifiable', false)
@@ -249,13 +252,13 @@ local function bbpr()
         open_pr_choose_window()
     end
 
-    get_pr_list()
+    local workspace, repo = bb.get_local_workspace_and_repo()
+    pr_list = bb.get_pull_requests(workspace, repo)
     paint_choose_buf()
 end
 
 return {
     bbpr = bbpr,
-    open_pr_choose_window = open_pr_choose_window,
     close = close,
     open_pr = open_pr,
     load_diff = load_diff
