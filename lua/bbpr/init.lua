@@ -191,7 +191,30 @@ end
 
 local function load_diff()
     local file = api.nvim_get_current_line()
-    api.nvim_set_current_win(pr_diff_win)
+    local win = -1
+
+    -- TODO: change these two `if`s into a function to grab windows
+    -- check if the diff buffer is still alive
+    if diff_buf and api.nvim_buf_is_valid(diff_buf) then
+        win = vim.fn.bufwinnr(diff_buf)
+    else
+        -- if not re-create
+        diff_buf = api.nvim_create_buf(false, true)
+        set_buf_options(diff_buf)
+    end
+
+    -- check if the diff window still alive
+    if win == -1 then
+        -- create new window to the left and attach buffer
+        vim.cmd("topleft vnew")
+        win = api.nvim_get_current_win()
+        api.nvim_set_current_win(win)
+
+        api.nvim_win_set_buf(win, diff_buf)
+    else
+        -- if it still exists and the buffer is attached, switch to that window
+        vim.cmd("exec "..win..".." .. "'wincmd w'")
+    end 
 
     api.nvim_buf_set_option(diff_buf, 'modifiable', true)
     api.nvim_buf_set_lines(diff_buf, 0, -1, false, {})
