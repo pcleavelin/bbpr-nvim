@@ -3,6 +3,7 @@ local bb = require('bbpr.bitbucket')
 
 local api = vim.api
 local pr_list, pr = nil
+local workspace, repo = nil
 
 local desc_buf, file_list_buf, diff_buf, diff_buf_2 = nil
 local pr_desc_win, pr_diff_win = nil
@@ -110,7 +111,8 @@ local function open_pr(line)
     pr = pr_list[pr_index]
 
     close()
-    pr_choose_win = nil
+
+    pr['files'] = bb.get_comments(pr['id'], workspace, repo)
 
     api.nvim_command("tabnew")
 
@@ -167,6 +169,10 @@ local function create_win_from_buf(_buf, winopts)
     return win, buf
 end
 
+local function add_code_comment(buf, ns, line, col, author, comment)
+    api.nvim_buf_set_extmark(buf, ns, line, col, { virt_lines = { { {author..': ', { 'Bold', 'Italic' }}}, {{comment, { 'Bold', 'Italic' }} } } })
+end
+
 local function load_diff(source_commit, dest_commit)
     local file = api.nvim_get_current_line()
     local win, win_2
@@ -190,10 +196,26 @@ local function load_diff(source_commit, dest_commit)
     vim.cmd('diffthis')
 
     api.nvim_buf_set_option(diff_buf_2, 'modifiable', false)
+
+    local ns_id = api.nvim_create_namespace('bbpr_diff')
+    api.nvim_buf_clear_namespace(diff_buf_2, ns_id, 0, -1)
+
+    if pr['files'] then
+        for k,comments in pairs(pr['files']) do 
+            if k == file then
+                for _,comment in pairs(comments) do
+                    add_code_comment(diff_buf_2, ns_id, comment['line'], 0, comment['author'], comment['contents'])
+                    for _,reply in ipairs(comment['replies']) do
+                        add_code_comment(diff_buf_2, ns_id, comment['line'], 0, reply['author'], reply['contents'])
+                    end
+                end
+           end
+        end
+    end
 end
 
 local function bbpr()
-    local workspace, repo = bb.get_local_workspace_and_repo()
+    workspace, repo = bb.get_local_workspace_and_repo()
     pr_list = bb.get_pull_requests(workspace, repo)
 
     local pr_string = ''
