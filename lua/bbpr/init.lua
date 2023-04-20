@@ -35,23 +35,6 @@ local function set_mappings(buf, mappings)
     end
 end
 
-local function get_pr_list()
-    pr_list = {
-        ["PR-1"] = {
-            ["link"] = "http://google.com"
-        },
-        ["PR-2"]= { ["link"] = "http://google.com" },
-        ["PR-3"] = { ["link"] = "http://google.com" }
-    }
-end
-
-local function get_pr(link)
-    pr = {
-        ["desc"] = "This is a test description for a test Pull Request from Bitbucket.\nThough this is not actually from bitbucket.",
-        ["branch"] = "master",
-    }
-end
-
 local function set_buf_options(buf, mappings)
     -- set buffer to delete when hidden
     api.nvim_buf_set_option(buf, 'bufhidden', 'wipe')
@@ -103,6 +86,7 @@ local function paint_desc()
     api.nvim_buf_set_lines(desc_buf, 0, -1, false, list)
 
     api.nvim_buf_set_option(desc_buf, 'modifiable', false)
+    api.nvim_buf_set_option(desc_buf, 'syntax', 'markdown')
 end
 
 local function open_pr(line)
