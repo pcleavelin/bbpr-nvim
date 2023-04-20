@@ -218,13 +218,44 @@ local function bbpr()
     workspace, repo = bb.get_local_workspace_and_repo()
     pr_list = bb.get_pull_requests(workspace, repo)
 
-    local pr_string = ''
+    local pr_title_list = {}
+    local i = 1
     for k,v in pairs(pr_list) do
-        pr_string = pr_string..k..': '..v['title']..'\n'
+        pr_title_list[i] = k..":"..v['title']
+        i = i+1
     end
 
-    vim.fn['fzf#vim#grep']('echo "'..pr_string:sub(1,-2)..'"', 1, { ['options'] = { '--ansi' }, ['sink'] = open_pr }, 0)
+    local pickers = require "telescope.pickers"
+    local finders = require "telescope.finders"
+    local conf = require("telescope.config").values
+    local opts = require("telescope.themes").get_dropdown{}
+
+    local actions = require "telescope.actions"
+    local action_state = require "telescope.actions.state"
+
+    pickers.new(opts, {
+        prompt_title = "Pull Requests",
+        finder = finders.new_table {
+            results = pr_title_list
+        },
+        sorter = conf.generic_sorter(opts),
+        attach_mappings = function(prompt_bufnr, map)
+            actions.select_default:replace(function()
+                actions.close(prompt_bufnr)
+                local selection = action_state.get_selected_entry()
+                --print(vim.inspect(selection))
+                --vim.api.nvim_put({ selection[1] }, "", false, true)
+                open_pr(selection[1])
+            end)
+
+            return true
+        end
+    }):find()
+
+    -- vim.fn['fzf#vim#grep']('echo "'..pr_string:sub(1,-2)..'"', 1, { ['options'] = { '--ansi' }, ['sink'] = open_pr }, 0)
 end
+
+bbpr()
 
 return {
     bbpr = bbpr,
